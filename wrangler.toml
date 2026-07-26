@@ -10,7 +10,7 @@ binding = "TWEET_STORE"
 id = "1e37b44426b94e2fa8de2bccfe7a38da"
 
 [triggers]
-crons = ["30 1,11 * * 1-5"]   # 7:00 AM IST (01:30 UTC) & 5:00 PM IST (11:30 UTC), Mon-Fri only
+crons = ["30 1,11 * * MON-FRI"]   # 7:00 AM IST (01:30 UTC) & 5:00 PM IST (11:30 UTC), Monday to Friday only
 
 [vars]
 DMRC_USER_ID = "388032406"
