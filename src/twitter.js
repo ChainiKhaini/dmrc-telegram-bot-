@@ -14,7 +14,7 @@ import { fetchWithTimeout } from "./utils.js";
 export async function fetchRecentTweets(env, lastTweetId = null) {
   const apiKey = env.SOCIALDATA_API_KEY;
   const username = env.DMRC_USERNAME || "OfficialDMRC";
-  const maxTweets = parseInt(env.MAX_TWEETS_PER_CHECK || "60", 10);
+  const maxTweets = parseInt(env.MAX_TWEETS_PER_CHECK || "20", 10);
 
   if (!apiKey) {
     throw new Error("SOCIALDATA_API_KEY secret is not set.");
@@ -30,43 +30,29 @@ export async function fetchRecentTweets(env, lastTweetId = null) {
     query += ` since_id:${validLastId}`;
   }
 
-  let allRawTweets = [];
-  let cursor = null;
-  let page = 0;
-  const MAX_PAGES = 3;
+  const url = `https://api.socialdata.tools/twitter/search?query=${encodeURIComponent(query)}`;
+  console.log(`Fetching recent tweets from SocialData API (Single Call): ${url}`);
 
-  do {
-    page++;
-    let url = `https://api.socialdata.tools/twitter/search?query=${encodeURIComponent(query)}`;
-    if (cursor) {
-      url += `&cursor=${encodeURIComponent(cursor)}`;
+  const response = await fetchWithTimeout(url, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Accept": "application/json"
     }
-    console.log(`Fetching tweets from SocialData API (Page ${page}): ${url}`);
+  }, 10000);
 
-    const response = await fetchWithTimeout(url, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Accept": "application/json"
-      }
-    }, 10000);
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`SocialData API HTTP ${response.status}: ${errText}`);
+  }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`SocialData API HTTP ${response.status}: ${errText}`);
-    }
+  const data = await response.json();
+  const rawTweets = data.tweets || data.data || (Array.isArray(data) ? data : []);
 
-    const data = await response.json();
-    const rawTweets = data.tweets || data.data || (Array.isArray(data) ? data : []);
-    allRawTweets.push(...rawTweets);
-
-    cursor = data.next_cursor || null;
-  } while (cursor && page < MAX_PAGES);
-
-  console.log(`Retrieved ${allRawTweets.length} total raw tweets across ${page} page(s) from SocialData.`);
+  console.log(`Retrieved ${rawTweets.length} raw tweets from SocialData.`);
 
   // Normalize, filter valid numeric IDs, and exclude retweets
-  const normalizedTweets = allRawTweets
+  const normalizedTweets = rawTweets
     .map(tweet => parseTweet(tweet, username))
     .filter(tweet => tweet && /^\d+$/.test(tweet.id_str) && !tweet.is_retweet);
 
@@ -81,10 +67,10 @@ export async function fetchRecentTweets(env, lastTweetId = null) {
     }
   });
 
-  // Enforce MAX_TWEETS_PER_CHECK ceiling and return with exact API hits count
+  // Enforce MAX_TWEETS_PER_CHECK ceiling and return exactly 1 API hit
   return {
     tweets: normalizedTweets.slice(0, maxTweets),
-    apiHits: page
+    apiHits: 1
   };
 }
 
