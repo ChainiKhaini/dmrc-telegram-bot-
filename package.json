@@ -1,0 +1,24 @@
+{
+  "name": "dmrc-telegram-bot",
+  "version": "1.0.0",
+  "description": "Delhi Metro Rail Corporation (DMRC) Service Update Notification Bot powered by Cloudflare Workers & Workers AI",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test-scheduled": "wrangler dev --test-scheduled"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "workers-ai",
+    "telegram-bot",
+    "dmrc",
+    "delhi-metro",
+    "twitter-scraper"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.100.0"
+  }
+}

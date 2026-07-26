@@ -1,0 +1,18 @@
+name = "dmrc-telegram-bot"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "TWEET_STORE"
+id = "1e37b44426b94e2fa8de2bccfe7a38da"
+
+[triggers]
+crons = ["30 1,11 * * 1-5"]   # 7:00 AM IST (01:30 UTC) & 5:00 PM IST (11:30 UTC), Mon-Fri only
+
+[vars]
+DMRC_USER_ID = "388032406"
+DMRC_USERNAME = "OfficialDMRC"
+MAX_TWEETS_PER_CHECK = "20"
