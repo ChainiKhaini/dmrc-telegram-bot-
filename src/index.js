@@ -135,8 +135,11 @@ async function runServiceUpdatePipeline(env) {
 
     // 2. Fetch recent tweets from @OfficialDMRC
     let tweets = [];
+    let apiHits = 0;
     try {
-      tweets = await fetchRecentTweets(env, lastTweetId);
+      const result = await fetchRecentTweets(env, lastTweetId);
+      tweets = Array.isArray(result) ? result : (result.tweets || []);
+      apiHits = typeof result === "object" && typeof result.apiHits === "number" ? result.apiHits : 1;
     } catch (err) {
       console.error("Failed to fetch tweets from SocialData:", err);
       throw err;
@@ -144,8 +147,8 @@ async function runServiceUpdatePipeline(env) {
 
     if (!tweets || tweets.length === 0) {
       console.log("No new tweets found.");
-      await updateStats(env, 0, 0, 1);
-      return { tweets_checked: 0, updates_sent: 0, message: "No new tweets available" };
+      await updateStats(env, 0, 0, apiHits);
+      return { tweets_checked: 0, updates_sent: 0, api_hits: apiHits, message: "No new tweets available" };
     }
 
     console.log(`Processing ${tweets.length} new tweets in ascending order...`);
@@ -224,13 +227,14 @@ async function runServiceUpdatePipeline(env) {
       }
     }
 
-    // Update statistics
-    await updateStats(env, tweets.length, updatesSent, 1);
+    // Update statistics with actual SocialData HTTP requests count (apiHits)
+    await updateStats(env, tweets.length, updatesSent, apiHits);
 
     return {
       tweets_checked: tweets.length,
       updates_sent: updatesSent,
       skipped: skippedTweets,
+      api_hits: apiHits,
       last_tweet_id: highWaterMarkId
     };
 

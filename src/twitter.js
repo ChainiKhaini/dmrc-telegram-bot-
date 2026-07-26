@@ -81,8 +81,11 @@ export async function fetchRecentTweets(env, lastTweetId = null) {
     }
   });
 
-  // Enforce MAX_TWEETS_PER_CHECK ceiling
-  return normalizedTweets.slice(0, maxTweets);
+  // Enforce MAX_TWEETS_PER_CHECK ceiling and return with exact API hits count
+  return {
+    tweets: normalizedTweets.slice(0, maxTweets),
+    apiHits: page
+  };
 }
 
 /**
