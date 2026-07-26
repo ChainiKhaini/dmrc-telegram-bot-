@@ -10,72 +10,147 @@ An automated, serverless notification system hosted on **Cloudflare Workers**. I
 
 ---
 
+## 📑 Table of Contents
+
+- [Architecture Overview](#-architecture-overview)
+- [Key Features](#-key-features)
+- [Two-Stage AI Pipeline](#-two-stage-ai-pipeline)
+- [Noise Mitigation & Cursor Pagination](#-noise-mitigation--cursor-pagination)
+- [Telegram Notification Examples](#-telegram-notification-examples)
+- [Supported Service Update Categories](#-supported-service-update-categories)
+- [Project Structure](#-project-structure)
+- [Step-by-Step Installation & Deployment](#-step-by-step-installation--deployment)
+- [REST API Endpoints & Monitoring](#-rest-api-endpoints--monitoring)
+- [Resource & Cost Breakdown](#-resource--cost-breakdown)
+- [Self-Healing & Reliability Mechanisms](#-self-healing--reliability-mechanisms)
+- [License](#-license)
+
+---
+
 ## 📐 Architecture Overview
 
 ```mermaid
 flowchart TD
-    A["⏰ Cron Trigger\n(Every 15 min, 6 AM–12 AM IST)"] --> B["☁️ Cloudflare Worker"]
-    B --> C["🐦 SocialData API\n(Fetch @OfficialDMRC posts)"]
-    C --> D{"New Posts Found?"}
-    D -->|No| E["Exit (No API overhead)"]
+    A["⏰ Cron Trigger\n(7:00 AM & 5:00 PM IST, Mon–Fri)\n[30 1,11 * * 1-5]"] --> B["☁️ Cloudflare Worker"]
+    B --> C["🐦 SocialData API\n(from:OfficialDMRC -filter:replies)"]
+    C --> D{"New Tweets Found?"}
+    D -->|No| E["Exit Pipeline (0 API Waste)"]
     D -->|Yes| F["🧠 Stage 1: Text AI Analysis\n(Meta Llama 3.1 8B Instruct)"]
     F --> G{"Is Service Update?"}
-    G -->|No| H["⏭️ Skip & Mark Processed"]
+    G -->|No| H["⏭️ Skip & Mark Processed in KV"]
     G -->|Yes / Inconclusive| I["🖼️ Stage 2: Vision OCR AI\n(Meta Llama 3.2 11B Vision)"]
     I --> J["📝 Format HTML Telegram Alert\n(Stations, Lines, Interchange)"]
-    J --> K["📱 Telegram Bot API\n(Send Notification)"]
-    K --> L["📦 Cloudflare KV\n(Update state & stats)"]
+    J --> K["📱 Telegram Bot API\n(sendPhoto / sendMessage)"]
+    K --> L["📦 Cloudflare KV (TWEET_STORE)\n(Update high-watermark & stats)"]
 ```
 
 ---
 
 ## ✨ Key Features
 
-- **⚡ Zero Server Cost ($0/month)**: Operates 100% within the free tiers of Cloudflare Workers, Cloudflare Workers AI, SocialData API, and Telegram.
-- **🔍 Reply Filtering & Multi-Page Cursor Pagination**: Automatically queries `from:OfficialDMRC -filter:replies` to strip out customer service replies at the API layer, and follows `next_cursor` pagination across up to 3 pages (~60 tweets) per check to prevent high-volume reply spams from burying service update notices.
-- **🧠 Two-Stage AI Analysis Pipeline**:
-  - **Stage 1 (Text Classification)**: Uses `@cf/meta/llama-3.1-8b-instruct-fast` to evaluate tweet text and filter out non-service-update posts (promotional content, greetings, recruitment).
-  - **Stage 2 (Vision OCR)**: Uses `@cf/meta/llama-3.2-11b-vision-instruct` to scan official DMRC notice images and extract structured data: affected stations, metro lines, interchange availability, and timing.
-- **⏰ High-Frequency Monitoring**: Triggered every **15 minutes** during Delhi Metro operating hours (6:00 AM – 11:45 PM IST) using Cloudflare Cron Triggers, ensuring near-real-time service alert delivery.
-- **📦 State Management & Deduplication**: Employs Cloudflare KV (`TWEET_STORE`) to track processed tweet IDs and maintain deduplication logs with 7-day TTL expiration.
-- **🛠️ Self-Healing Error Handling**: Automatic model failovers, keyword heuristics fallbacks, and exponential backoff retry logic for API rate limits.
-- **🚊 Metro Line Awareness**: Classifies updates by category — Station Closure, Service Delay, Line Suspension, Speed Restriction, Service Restoration, Security Alert.
+- **⚡ Zero Server Cost ($0/month)**: Runs 100% inside free tiers of Cloudflare Workers, Workers AI, SocialData API, and Telegram.
+- **🔍 API-Level Reply Filtering**: Queries `from:OfficialDMRC -filter:replies` to strip out customer service replies at the source.
+- **📜 Multi-Page Cursor Pagination**: Follows `next_cursor` across up to 3 pages (~60 tweets) per check run to ensure no advisory tweets get skipped or buried.
+- **🧠 Two-Stage AI Intelligence**:
+  - **Stage 1 (Text Classification)**: `@cf/meta/llama-3.1-8b-instruct-fast` evaluates tweet text to detect station closures, line delays, speed restrictions, and service restorations.
+  - **Stage 2 (Vision OCR)**: `@cf/meta/llama-3.2-11b-vision-instruct` scans official DMRC notice posters/infographics to extract affected stations, lines, interchange availability, and timing.
+- **⏰ Smart Weekday Scheduling**: Triggered twice daily at **7:00 AM IST** and **5:00 PM IST** (Monday through Friday) using Cloudflare Cron Triggers (`30 1,11 * * 1-5`), using only ~44 API calls/month (out of 100 free requests).
+- **📦 Distributed KV State Guard**: Uses Cloudflare KV (`TWEET_STORE`) with a 60-second distributed lock guard, high-watermark tweet ID tracking, and 7-day TTL deduplication logs.
+- **📊 Real-Time Web Dashboard**: Built-in glassmorphic dark status dashboard served at `/` with DMRC metro line badges.
 
 ---
 
-## 📱 Telegram Alert Preview
+## 🧠 Two-Stage AI Pipeline
 
-When a service update is detected, the bot delivers a formatted HTML message:
+### Stage 1: Text Classification (Meta Llama 3.1 8B Instruct)
+Determines whether tweet text represents an operational metro service update.
 
+```json
+{
+  "is_service_update": true,
+  "confidence": 0.95,
+  "category": "Station Closure",
+  "summary_en": "Multiple stations closed on Yellow and Violet lines till further instructions.",
+  "affected_stations": ["Lok Kalyan Marg", "Rajiv Chowk", "Patel Chowk", "Mandi House"],
+  "affected_lines": ["Yellow Line", "Violet Line"],
+  "interchange_available": ["Rajiv Chowk", "Mandi House", "Central Secretariat"],
+  "duration": "Till further instructions"
+}
 ```
-🚇 DMRC SERVICE UPDATE
+
+### Stage 2: Vision OCR (Meta Llama 3.2 11B Vision)
+Triggered when tweets include notice images/infographics. Extracts full lists of closed stations, line names, and interchange facilities directly from image pixels.
+
+---
+
+## 🔍 Noise Mitigation & Cursor Pagination
+
+DMRC's X handle (@OfficialDMRC) frequently posts passenger grievance responses. Without filtering, these replies cause API truncation and jump over actual service alerts.
+
+- **Query Optimization**: `from:OfficialDMRC -filter:replies` eliminates 90%+ of reply noise at the API query level.
+- **Pagination Loop**:
+  ```javascript
+  let cursor = null;
+  let page = 0;
+  const MAX_PAGES = 3;
+
+  do {
+    page++;
+    let url = `https://api.socialdata.tools/twitter/search?query=${encodeURIComponent(query)}`;
+    if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+
+    const response = await fetchWithTimeout(url, { ... });
+    const data = await response.json();
+    allRawTweets.push(...(data.tweets || []));
+    cursor = data.next_cursor || null;
+  } while (cursor && page < MAX_PAGES);
+  ```
+
+---
+
+## 📱 Telegram Notification Examples
+
+When a service update is detected, the bot sends a formatted HTML alert:
+
+```html
+🚇 <b>DMRC SERVICE UPDATE</b>
 ━━━━━━━━━━━━━━━━━━━━
 
-📋 Category: Station Closure
-📅 Date: 22 Jul 2026, 11:27 AM IST
+📋 <b>Category:</b> Station Closure
+📅 <b>Date:</b> 22 Jul 2026, 11:27 AM IST
 
-📝 Summary:
-Below mentioned Metro stations have been closed till further
-instructions. Interchange facility shall remain available at
-Rajiv Chowk, Mandi House and Central Secretariat.
+📝 <b>Summary:</b>
+Below mentioned Metro stations have been closed till further instructions. Interchange facility shall remain available at Rajiv Chowk, Mandi House and Central Secretariat.
 
-🚉 Affected Stations:
-Lok Kalyan Marg, Rajiv Chowk, Patel Chowk, Ramakrishna Ashram
-Marg, Barakhambha Road, Supreme Court, Seva Teerth, Janpath,
-Mandi House, Central Secretariat, ITO, Delhi Gate, Indraprastha,
-Khan Market, Jor Bagh, Shivaji Stadium
+🚉 <b>Affected Stations:</b>
+Lok Kalyan Marg, Rajiv Chowk, Patel Chowk, Ramakrishna Ashram Marg, Barakhambha Road, Supreme Court, Seva Teerth, Janpath, Mandi House, Central Secretariat, ITO, Delhi Gate, Indraprastha, Khan Market, Jor Bagh, Shivaji Stadium
 
-🔀 Interchange Available At:
+🔀 <b>Interchange Available At:</b>
 Rajiv Chowk, Mandi House, Central Secretariat
 
-🚊 Affected Lines:
+🚊 <b>Affected Lines:</b>
 Yellow Line, Violet Line
 
-💬 Original Post:
-"Service Update — Below mentioned Metro stations have been..."
+💬 <b>Original Post:</b>
+<blockquote>Service Update — Below mentioned Metro stations have been closed...</blockquote>
 
-🔗 View Post on X/Twitter
+🔗 <a href="https://x.com/OfficialDMRC/status/2071913694569841036">View Post on X/Twitter</a>
 ```
+
+---
+
+## 🚇 Supported Service Update Categories
+
+| Category | Example Tweet Content |
+|----------|-----------------------|
+| **Station Closure** | *"Metro stations have been closed till further instructions..."* |
+| **Service Delay** | *"Minor delay on Blue Line due to a signalling issue..."* |
+| **Line Suspension** | *"Services not available between Sultanpur and HUDA City Centre..."* |
+| **Speed Restriction** | *"Speed restriction in place between Rajiv Chowk and Kashmere Gate..."* |
+| **Service Restoration** | *"All stations of the Delhi Metro network are now open for passenger services."* |
+| **Security Alert** | *"Entry/exit gates at Rajiv Chowk closed due to security reasons..."* |
+| **Gate Closure** | *"Gate No. 3 & 4 of Mandi House station closed..."* |
+| **Timing Change** | *"Last metro service extended by 30 minutes for IPL match..."* |
 
 ---
 
@@ -85,17 +160,19 @@ Yellow Line, Violet Line
 dmrc-telegram-bot/
 ├── src/
 │   ├── index.js          # Worker entrypoint (Cron handler + HTTP endpoints)
-│   ├── twitter.js        # Twitter client using SocialData API
+│   ├── twitter.js        # Twitter client using SocialData API (-filter:replies + pagination)
 │   ├── analyzer.js       # Cloudflare Workers AI (Llama 3.1 & Llama 3.2 Vision)
 │   ├── telegram.js       # Telegram Bot API client with retry & HTML support
 │   ├── formatter.js      # HTML message formatter with metro theming
-│   ├── dashboard.js      # Web status dashboard
+│   ├── dashboard.js      # Glassmorphic web status dashboard
 │   └── utils.js          # Shared utilities (fetchWithTimeout, parseBoolean)
 ├── wrangler.toml         # Cloudflare Worker configuration & bindings
 ├── package.json          # Node dependencies & scripts
+├── .dev.vars             # Local environment secrets (ignored by git)
 ├── .dev.vars.example     # Local secrets template
 ├── .gitignore            # Security exclusions
-└── README.md             # This file
+├── LICENSE               # MIT License
+└── README.md             # Complete documentation
 ```
 
 ---
@@ -103,127 +180,87 @@ dmrc-telegram-bot/
 ## 🚀 Step-by-Step Installation & Deployment
 
 ### Prerequisites
-
 - [Node.js](https://nodejs.org/) (v18 or higher)
-- A free [Cloudflare Account](https://dash.cloudflare.com/)
-- A Telegram Bot token from [@BotFather](https://t.me/BotFather)
-- An API Key from [SocialData.tools](https://socialdata.tools)
+- [Cloudflare Account](https://dash.cloudflare.com/) (Free Tier)
+- Telegram Bot token from [@BotFather](https://t.me/BotFather)
+- API Key from [SocialData.tools](https://socialdata.tools)
 
-### Step 1: Clone the Repository
-
+### Step 1: Clone Repository
 ```bash
-git clone https://github.com/ChainiKhaini/dmrc-telegram-bot.git
-cd dmrc-telegram-bot
+git clone https://github.com/ChainiKhaini/dmrc-telegram-bot-.git
+cd dmrc-telegram-bot-
 npm install
 ```
 
 ### Step 2: Create Cloudflare KV Namespace
-
-Run Wrangler CLI to create the state storage namespace:
-
 ```bash
 npx wrangler kv namespace create TWEET_STORE
 ```
-
-Copy the returned namespace `id` and update `wrangler.toml`:
-
+Copy the returned ID into `wrangler.toml`:
 ```toml
 [[kv_namespaces]]
 binding = "TWEET_STORE"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "1e37b44426b94e2fa8de2bccfe7a38da"
 ```
 
 ### Step 3: Configure Cloudflare Secrets
-
-Store your sensitive API keys securely:
-
 ```bash
-# 1. SocialData API Key
 npx wrangler secret put SOCIALDATA_API_KEY
-
-# 2. Telegram Bot Token (from @BotFather)
 npx wrangler secret put TELEGRAM_BOT_TOKEN
-
-# 3. Telegram Chat ID (your user ID or channel handle)
 npx wrangler secret put TELEGRAM_CHAT_ID
 ```
 
-### Step 4: Local Development & Testing
+### Step 4: Local Testing
+```bash
+# 1. Create .dev.vars file
+echo 'SOCIALDATA_API_KEY="your_key"' > .dev.vars
+echo 'TELEGRAM_BOT_TOKEN="your_token"' >> .dev.vars
+echo 'TELEGRAM_CHAT_ID="your_chat_id"' >> .dev.vars
 
-1. Create a `.dev.vars` file for local secrets:
-   ```ini
-   SOCIALDATA_API_KEY="your_api_key_here"
-   TELEGRAM_BOT_TOKEN="your_bot_token_here"
-   TELEGRAM_CHAT_ID="your_chat_id_here"
-   ```
-2. Start the local development server:
-   ```bash
-   npm run dev
-   ```
+# 2. Run local server
+npm run dev
+```
 
 ### Step 5: Deploy to Production
-
-Deploy the Worker to Cloudflare's edge network:
-
 ```bash
 npm run deploy
 ```
 
-Wrangler will output your deployed Worker URL: `https://dmrc-telegram-bot.<your-subdomain>.workers.dev`
-
 ---
 
-## 📊 Monitoring & REST Endpoints
+## 📊 REST API Endpoints & Monitoring
 
-The worker exposes HTTP management endpoints:
+The Worker exposes production management endpoints:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | `GET` | Rich HTML status dashboard with metro theming |
-| `/health` | `GET` | System health check with timestamp |
-| `/stats` | `GET` | Metrics (tweets checked, updates sent, run counts) — requires auth |
-| `/trigger` | `POST` | Manually triggers the AI pipeline on-demand — requires auth |
-
-#### Example Usage:
-```bash
-# Check health
-curl https://dmrc-telegram-bot.<your-subdomain>.workers.dev/health
-
-# View dashboard
-open https://dmrc-telegram-bot.<your-subdomain>.workers.dev/
-
-# Trigger manual check (with auth)
-curl -X POST -H "X-Trigger-Secret: YOUR_SECRET" \
-  https://dmrc-telegram-bot.<your-subdomain>.workers.dev/trigger
-```
+| `/` or `/dashboard` | `GET` | HTML status dashboard with live metrics & metro line badges |
+| `/health` | `GET` | System health check (returns `{ "status": "ok" }`) |
+| `/stats` | `GET` | Metrics (total checked, updates sent, API hits) — requires secret |
+| `/trigger` | `POST` | Manually triggers the AI pipeline on-demand — requires secret |
 
 ---
 
-## 🚇 Supported DMRC Service Update Categories
-
-| Category | Example |
-|----------|---------|
-| **Station Closure** | "Metro stations have been closed till further instructions" |
-| **Service Delay** | "Minor delay on Blue Line due to a signalling issue" |
-| **Line Suspension** | "Services not available between Sultanpur and HUDA City Centre" |
-| **Speed Restriction** | "Speed restriction in place between Rajiv Chowk and Kashmere Gate" |
-| **Service Restoration** | "All stations of the Delhi Metro network are now open" |
-| **Security Alert** | "Entry/exit gates at Rajiv Chowk closed due to security reasons" |
-| **Gate Closure** | "Gate No. 3 & 4 of Mandi House station closed" |
-| **Timing Change** | "Last metro service extended by 30 minutes" |
-
----
-
-## 💡 Resource & Cost Analysis
+## 💡 Resource & Cost Breakdown
 
 | Service | Free Plan Limit | Project Usage | Monthly Cost |
 |---------|-----------------|---------------|--------------|
-| **Cloudflare Workers** | 100,000 req/day | ~72 requests/day | **$0.00** |
-| **Cloudflare Workers AI** | 10,000 neurons/day | ~500 neurons/day | **$0.00** |
-| **Cloudflare KV** | 100,000 reads/day | ~150 reads/day | **$0.00** |
-| **SocialData API** | 100 req/month free | ~72 requests/month | **$0.00** |
-| **Telegram Bot API** | Unlimited | ~10–30 msgs/day | **$0.00** |
+| **Cloudflare Workers** | 100,000 req/day | ~2 requests/day | **$0.00** |
+| **Cloudflare Workers AI** | 10,000 neurons/day | ~200 neurons/day | **$0.00** |
+| **Cloudflare KV** | 100,000 reads/day | ~44 reads/day | **$0.00** |
+| **SocialData API** | 100 req/month free | ~44 requests/month | **$0.00** |
+| **Telegram Bot API** | Unlimited | ~5–15 msgs/day | **$0.00** |
 | **Total Cost** | | | **$0.00 / month** |
+
+---
+
+## 🛡️ Self-Healing & Reliability Mechanisms
+
+1. **Distributed Lock Guard**: Cloudflare KV lock (`lock:pipeline`) with 60-second TTL prevents concurrent cron executions.
+2. **Model Failover Chain**: Tries primary model (`llama-3.1-8b-instruct-fast`), falling back to alternative variants if Cloudflare AI model endpoints experience temporary outages.
+3. **Keyword Heuristic Fallback**: If all AI models fail, a deterministic keyword matcher evaluates tweet text to ensure critical service announcements are never lost.
+4. **Telegram Exponential Backoff**: Handles HTTP 429 rate limits by respecting Telegram's `retry_after` parameters up to 3 automatic retries.
+5. **Message Truncation Guard**: Ensures Telegram HTML messages never exceed Telegram's 4,096-character API limit.
 
 ---
 
