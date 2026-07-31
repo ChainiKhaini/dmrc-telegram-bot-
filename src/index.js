@@ -30,12 +30,22 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Root Endpoint / Dashboard: Serve rich HTML dashboard
+    // Root Endpoint / Dashboard: Serve rich HTML dashboard with live AI Advisory Feed
     if ((url.pathname === "/" || url.pathname === "/dashboard") && request.method === "GET") {
       const stats = await getKVStats(env);
-      const html = renderDashboardHtml(stats);
+      const advisories = await getRecentAdvisories(env);
+      const html = renderDashboardHtml(stats, advisories);
       return new Response(html, {
         headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
+    }
+
+    // Public Endpoint: /api/advisories or /advisories (returns JSON feed of recent service updates)
+    if ((url.pathname === "/api/advisories" || url.pathname === "/advisories") && request.method === "GET") {
+      const advisories = await getRecentAdvisories(env);
+      return Response.json({
+        total: advisories.length,
+        advisories: advisories
       });
     }
 
@@ -204,6 +214,11 @@ async function runServiceUpdatePipeline(env) {
           await sendTelegramNotification(env, tweet, textAnalysis, imageAnalysis, fullHtmlMsg);
 
           updatesSent++;
+
+          // Save structured advisory record for dashboard feed
+          if (kv) {
+            await saveAdvisoryToKV(kv, tweet, textAnalysis, imageAnalysis);
+          }
         } else {
           console.log(`⏭️ Tweet ${tweet.id_str} is not a service update. Skipping.`);
           skippedTweets++;
@@ -302,5 +317,66 @@ async function getKVStats(env) {
     };
   } catch (err) {
     return { error: err.message };
+  }
+}
+
+/**
+ * Save structured advisory object to recent_advisories array in KV
+ * @param {object} kv - KV Namespace binding
+ * @param {object} tweet - Tweet object
+ * @param {object} textAnalysis - Stage 1 AI text classification result
+ * @param {object|null} imageAnalysis - Stage 2 AI vision analysis result
+ */
+async function saveAdvisoryToKV(kv, tweet, textAnalysis, imageAnalysis = null) {
+  try {
+    const record = {
+      id_str: tweet.id_str,
+      tweet_url: tweet.tweet_url,
+      text: tweet.text,
+      created_at: tweet.created_at,
+      detected_at: new Date().toISOString(),
+      category: textAnalysis.category || "Service Update",
+      confidence: textAnalysis.confidence || 0.85,
+      summary: imageAnalysis?.notice_summary || textAnalysis.summary_en || tweet.text,
+      affected_stations: Array.from(new Set([
+        ...(textAnalysis.affected_stations || []),
+        ...(imageAnalysis?.affected_stations || [])
+      ])).filter(Boolean),
+      affected_lines: Array.from(new Set([
+        ...(textAnalysis.affected_lines || []),
+        ...(imageAnalysis?.affected_lines || [])
+      ])).filter(Boolean),
+      interchange_available: Array.from(new Set([
+        ...(textAnalysis.interchange_available || []),
+        ...(imageAnalysis?.interchange_available || [])
+      ])).filter(Boolean),
+      images: tweet.images || []
+    };
+
+    const rawList = await kv.get("recent_advisories");
+    let advisories = rawList ? JSON.parse(rawList) : [];
+    if (!advisories.some(a => a.id_str === record.id_str)) {
+      advisories.unshift(record);
+      if (advisories.length > 30) advisories = advisories.slice(0, 30);
+      await kv.put("recent_advisories", JSON.stringify(advisories));
+    }
+  } catch (err) {
+    console.error("Failed to save advisory to KV:", err);
+  }
+}
+
+/**
+ * Get recent advisories list from KV
+ * @param {object} env - Worker environment
+ * @returns {Promise<Array>} Array of advisory objects
+ */
+async function getRecentAdvisories(env) {
+  if (!env.TWEET_STORE) return [];
+  try {
+    const raw = await env.TWEET_STORE.get("recent_advisories");
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    console.warn("Failed to fetch recent advisories from KV:", err);
+    return [];
   }
 }

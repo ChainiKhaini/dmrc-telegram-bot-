@@ -1,9 +1,9 @@
 /**
  * Web Dashboard HTML Renderer for DMRC Service Update Bot
- * Metro-themed glassmorphic dark dashboard
+ * Metro-themed glassmorphic dark dashboard featuring live AI advisory feed
  */
 
-export function renderDashboardHtml(stats) {
+export function renderDashboardHtml(stats, advisories = []) {
   const status = "Active & Healthy";
   const lastCheck = stats.last_run ? formatDate(stats.last_run) : "Never";
   const apiHitsMonth = stats.api_hits_this_month || 0;
@@ -17,7 +17,7 @@ export function renderDashboardHtml(stats) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DMRC Service Update Bot — Status Dashboard</title>
+  <title>DMRC Service Update Bot — Status & AI Advisory Feed</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -55,7 +55,7 @@ export function renderDashboardHtml(stats) {
 
     .container {
       width: 100%;
-      max-width: 920px;
+      max-width: 960px;
     }
 
     header {
@@ -156,6 +156,188 @@ export function renderDashboardHtml(stats) {
       color: var(--text-muted);
     }
 
+    /* Advisories Section Styling */
+    .section-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-badge {
+      font-size: 0.8rem;
+      background: rgba(229, 57, 53, 0.15);
+      border: 1px solid rgba(229, 57, 53, 0.4);
+      color: #ff6b6b;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    .advisories-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .advisory-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(14px);
+      border-radius: 16px;
+      padding: 1.5rem;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .advisory-card:hover {
+      border-color: rgba(229, 57, 53, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .advisory-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .cat-badge {
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .cat-closure { background: #e53935; color: white; }
+    .cat-delay { background: #fbc02d; color: #1a1a1a; }
+    .cat-suspension { background: #7b1fa2; color: white; }
+    .cat-speed { background: #ff9800; color: white; }
+    .cat-restoration { background: #00e676; color: #0a0e1a; }
+    .cat-default { background: #1565c0; color: white; }
+
+    .advisory-time {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .advisory-summary {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      color: var(--text-main);
+      margin-bottom: 1rem;
+      font-weight: 500;
+    }
+
+    .meta-group {
+      margin-bottom: 1rem;
+    }
+
+    .meta-title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+
+    .tags-flex {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .station-chip {
+      background: rgba(229, 57, 53, 0.12);
+      border: 1px solid rgba(229, 57, 53, 0.35);
+      color: #ff8a80;
+      padding: 0.25rem 0.65rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .interchange-chip {
+      background: rgba(21, 101, 192, 0.15);
+      border: 1px solid rgba(21, 101, 192, 0.4);
+      color: #82b1ff;
+      padding: 0.25rem 0.65rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .tweet-snippet {
+      background: rgba(0, 0, 0, 0.3);
+      border-left: 3px solid var(--primary);
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.9rem;
+      color: #d1d5db;
+      margin-bottom: 1rem;
+      font-style: italic;
+    }
+
+    .advisory-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    .confidence-pill {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .btn-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+      padding: 0.4rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .btn-link:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+      text-decoration: none;
+    }
+
+    .empty-state {
+      background: var(--card-bg);
+      border: 1px dashed var(--card-border);
+      border-radius: 16px;
+      padding: 3rem 1.5rem;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .empty-icon {
+      font-size: 2.5rem;
+      margin-bottom: 0.75rem;
+      opacity: 0.7;
+    }
+
     .details-box {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -246,7 +428,7 @@ export function renderDashboardHtml(stats) {
       </div>
       <div class="metro-icon">🚇</div>
       <h1>DMRC Service Update Bot</h1>
-      <p class="subtitle">Cloudflare Workers AI Notification System for Delhi Metro</p>
+      <p class="subtitle">Cloudflare Workers AI Notification System & Live Advisory Feed</p>
     </header>
 
     <div class="grid">
@@ -278,6 +460,16 @@ export function renderDashboardHtml(stats) {
       </div>
     </div>
 
+    <!-- AI Service Updates / Advisory Feed -->
+    <div class="section-title">
+      <span>📡 Detected Service Updates (AI Advisory Feed)</span>
+      <span class="section-badge">${advisories.length} Logged</span>
+    </div>
+
+    <div class="advisories-feed">
+      ${renderAdvisoriesList(advisories)}
+    </div>
+
     <div class="details-box">
       <div class="details-title">
         <span>⚙️ Operational Details</span>
@@ -292,7 +484,7 @@ export function renderDashboardHtml(stats) {
       </div>
       <div class="info-row">
         <span class="info-label">Cron Schedule</span>
-        <span class="info-val">30 1,11 * * 1-5 (7 AM & 5 PM IST, Mon-Fri)</span>
+        <span class="info-val">30 1,11 * * MON-FRI (7 AM & 5 PM IST, Mon-Fri)</span>
       </div>
       <div class="info-row">
         <span class="info-label">Target X/Twitter Handle</span>
@@ -329,6 +521,82 @@ export function renderDashboardHtml(stats) {
 </html>`;
 }
 
+/**
+ * Render list of advisory cards or empty state
+ */
+function renderAdvisoriesList(advisories) {
+  if (!advisories || advisories.length === 0) {
+    return `<div class="empty-state">
+      <div class="empty-icon">🚊</div>
+      <h3>No Service Updates Detected Yet</h3>
+      <p style="margin-top: 0.5rem; font-size: 0.9rem;">When @OfficialDMRC posts an official station closure, service delay, or restoration alert, Cloudflare Workers AI will evaluate it and automatically display the structured update here.</p>
+    </div>`;
+  }
+
+  return advisories.map(adv => {
+    const catClass = getCategoryClass(adv.category);
+    const dateStr = formatDate(adv.created_at || adv.detected_at);
+    const stations = adv.affected_stations || [];
+    const lines = adv.affected_lines || [];
+    const interchange = adv.interchange_available || [];
+    const snippet = adv.text ? (adv.text.length > 250 ? adv.text.substring(0, 247) + "..." : adv.text) : "";
+    const confidence = adv.confidence ? Math.round(adv.confidence * 100) : 85;
+
+    return `<div class="advisory-card">
+      <div class="advisory-header">
+        <span class="cat-badge ${catClass}">${escapeHtml(adv.category || "Service Update")}</span>
+        <span class="advisory-time">📅 ${dateStr}</span>
+      </div>
+
+      <div class="advisory-summary">${escapeHtml(adv.summary || adv.text)}</div>
+
+      ${stations.length > 0 ? `
+        <div class="meta-group">
+          <div class="meta-title">🚉 Affected Stations</div>
+          <div class="tags-flex">
+            ${stations.map(s => `<span class="station-chip">${escapeHtml(s)}</span>`).join("")}
+          </div>
+        </div>
+      ` : ""}
+
+      ${interchange.length > 0 ? `
+        <div class="meta-group">
+          <div class="meta-title">🔀 Interchange Available</div>
+          <div class="tags-flex">
+            ${interchange.map(i => `<span class="interchange-chip">${escapeHtml(i)}</span>`).join("")}
+          </div>
+        </div>
+      ` : ""}
+
+      ${snippet ? `<blockquote class="tweet-snippet">"${escapeHtml(snippet)}"</blockquote>` : ""}
+
+      <div class="advisory-footer">
+        <span class="confidence-pill">🤖 AI Confidence: ${confidence}%</span>
+        <a href="${adv.tweet_url || '#'}" target="_blank" class="btn-link">View on X ↗</a>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function getCategoryClass(category) {
+  if (!category) return "cat-default";
+  const c = category.toLowerCase();
+  if (c.includes("closure") || c.includes("closed")) return "cat-closure";
+  if (c.includes("delay")) return "cat-delay";
+  if (c.includes("suspension") || c.includes("suspended")) return "cat-suspension";
+  if (c.includes("speed")) return "cat-speed";
+  if (c.includes("restoration") || c.includes("open")) return "cat-restoration";
+  return "cat-default";
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function formatDate(isoString) {
   try {
     const d = new Date(isoString);
@@ -338,10 +606,9 @@ function formatDate(isoString) {
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit",
       timeZone: "Asia/Kolkata"
     }) + " IST";
   } catch {
-    return isoString;
+    return isoString || "Recently";
   }
 }
