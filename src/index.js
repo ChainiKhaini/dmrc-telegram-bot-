@@ -67,10 +67,10 @@ export default {
       return Response.json(stats);
     }
 
-    // Authenticated Endpoint: /trigger (POST only)
-    if (url.pathname === "/trigger") {
-      if (request.method !== "POST") {
-        return Response.json({ error: "Method not allowed. Use POST." }, { status: 405 });
+    // Authenticated Endpoint: /trigger or /cron (supports GET and POST for cron-job.org)
+    if (url.pathname === "/trigger" || url.pathname === "/cron") {
+      if (request.method !== "POST" && request.method !== "GET") {
+        return Response.json({ error: "Method not allowed. Use GET or POST." }, { status: 405 });
       }
 
       if (!isAuthorized(request, env)) {
@@ -98,7 +98,7 @@ export default {
 };
 
 /**
- * Validates request authorization header against TRIGGER_SECRET
+ * Validates request authorization header or query parameter against TRIGGER_SECRET
  * @param {Request} request - Incoming HTTP request
  * @param {object} env - Worker environment
  * @returns {boolean} Whether the request is authorized
@@ -108,7 +108,14 @@ function isAuthorized(request, env) {
   if (!triggerSecret) return true; // No secret configured = open access
 
   const authHeader = request.headers.get("X-Trigger-Secret") || request.headers.get("Authorization");
-  return authHeader === triggerSecret || authHeader === `Bearer ${triggerSecret}`;
+  if (authHeader === triggerSecret || authHeader === `Bearer ${triggerSecret}`) {
+    return true;
+  }
+
+  // Also support query param: ?secret=... or ?key=... (ideal for cron-job.org)
+  const url = new URL(request.url);
+  const querySecret = url.searchParams.get("secret") || url.searchParams.get("key");
+  return querySecret === triggerSecret;
 }
 
 /**

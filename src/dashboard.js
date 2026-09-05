@@ -484,7 +484,7 @@ export function renderDashboardHtml(stats, advisories = []) {
       </div>
       <div class="info-row">
         <span class="info-label">Cron Schedule</span>
-        <span class="info-val">30 1,11 * * MON-FRI (7 AM & 5 PM IST, Mon-Fri)</span>
+        <span class="info-val">cron-job.org (7 AM & 5 PM IST, Mon-Fri)</span>
       </div>
       <div class="info-row">
         <span class="info-label">Target X/Twitter Handle</span>
